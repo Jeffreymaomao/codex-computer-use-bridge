@@ -77,6 +77,16 @@ For MCP clients (Claude Code, Codex, …) point them at the stdio entry point:
 }
 ```
 
+### Environment
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BRIDGE_HOST` | `127.0.0.1` | Bind address. Set to `0.0.0.0` to expose on the network (see below). |
+| `BRIDGE_PORT` | `37321` | HTTP port. |
+| `BRIDGE_TOKEN` | _(unset)_ | Shared secret. When set, every endpoint except `/health` requires `Authorization: Bearer <token>`. **Required before exposing off localhost.** |
+| `CODEX_BIN` | standalone, then GUI copy | Path to the `codex` binary. |
+| `BRIDGE_URL` | _(unset)_ | MCP server only: forward to a remote bridge instead of running locally (see [Team / LAN sharing](#team--lan-sharing)). |
+
 ## Usage tips
 
 - **`get_app_state(app)` once per session**, then chain actions — each action response already
@@ -108,6 +118,53 @@ From the Codex GUI the responsible app is Codex.app (already granted). A host wi
 lacking the `com.apple.security.automation.apple-events` entitlement — makes tool calls hang.
 The AppleScript endpoints (`/apps`, `/osascript/run`) need Automation permission for the same
 terminal.
+
+## Team / LAN sharing
+
+Let trusted teammates on your internal network drive **your** machine's Computer Use. The bridge
+runs on your Mac (the one with the macOS permissions); teammates connect to it — they need no
+Codex install and no permissions of their own.
+
+> ⚠️ This grants remote control of your real desktop — clicks, keystrokes, screenshots,
+> clipboard, AppleScript. Only expose it to people you trust, always set `BRIDGE_TOKEN`, and
+> prefer a private overlay network (Tailscale/WireGuard/VPN) over a raw LAN. Never expose it to
+> the public internet.
+
+### Host (you)
+
+```bash
+export BRIDGE_TOKEN="$(openssl rand -hex 24)"   # share this secret with teammates
+BRIDGE_HOST=0.0.0.0 BRIDGE_PORT=37321 npm start # or bind to your Tailscale IP instead of 0.0.0.0
+```
+
+Find the address teammates use: your Tailscale IP (`tailscale ip -4`) or LAN IP
+(`ipconfig getifaddr en0`). The server refuses every request without the token (except
+`/health`).
+
+### Teammate — as an MCP server (recommended)
+
+They run the proxy locally; their MCP client talks to it, and it forwards to your bridge:
+
+```jsonc
+{
+  "mcpServers": {
+    "computer-use-bridge": {
+      "command": "node",
+      "args": ["/abs/path/codex-computer-use-bridge/src/mcp-server.js"],
+      "env": { "BRIDGE_URL": "http://100.x.y.z:37321", "BRIDGE_TOKEN": "the-shared-secret" }
+    }
+  }
+}
+```
+
+### Teammate — as plain HTTP
+
+```bash
+curl -sX POST http://100.x.y.z:37321/computer-use/call \
+  -H "authorization: Bearer the-shared-secret" \
+  -H 'content-type: application/json' \
+  -d '{"name":"list_apps","arguments":{}}'
+```
 
 ## Run at login (optional)
 

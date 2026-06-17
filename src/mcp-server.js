@@ -1,18 +1,27 @@
 #!/usr/bin/env node
-// Stdio MCP server: exposes the Codex Computer Use tools to any MCP client
-// (Claude Code, Codex, etc.) by proxying through `codex app-server`.
+// Stdio MCP server exposing the Codex Computer Use tools to any MCP client.
 //
-// This is the "plugin-style" entry point. Declare it in an MCP client config:
-//   { "command": "node", "args": ["/abs/path/src/mcp-server.js"] }
+// Two modes:
+//   LOCAL  (default): spawns `codex app-server` on THIS machine and drives it.
+//   REMOTE (set BRIDGE_URL): forwards tools to a running HTTP bridge over the
+//          network — so a teammate runs this locally and operates the desktop
+//          of the machine hosting the bridge. Send BRIDGE_TOKEN to authenticate.
 //
-// Tool execution still requires the launching client to hold the macOS TCC
-// grants Computer Use needs (Accessibility, Input Monitoring, Screen Recording,
-// Automation). See src/app-server-client.js.
+// Declare it in an MCP client config:
+//   { "command": "node", "args": ["/abs/path/src/mcp-server.js"],
+//     "env": { "BRIDGE_URL": "http://10.0.0.5:37321", "BRIDGE_TOKEN": "..." } }
+//
+// LOCAL mode still requires the launching client to hold the macOS TCC grants
+// Computer Use needs (Accessibility, Input Monitoring, Screen Recording,
+// Automation). REMOTE mode requires those on the bridge host instead.
 
 import { createInterface } from "node:readline";
 import { AppServerClient } from "./app-server-client.js";
 
-const client = new AppServerClient();
+const REMOTE_URL = process.env.BRIDGE_URL ?? "";
+const TOKEN = process.env.BRIDGE_TOKEN ?? "";
+const backend = REMOTE_URL ? remoteBackend(REMOTE_URL, TOKEN) : localBackend();
+
 const out = (msg) => process.stdout.write(`${JSON.stringify(msg)}\n`);
 const reply = (id, result) => out({ jsonrpc: "2.0", id, result });
 const fail = (id, message, code = -32000) =>
@@ -32,9 +41,7 @@ async function handle(line) {
     return;
   }
   const { id, method, params } = msg;
-
-  // Notifications (no id) need no response.
-  if (id === undefined) return;
+  if (id === undefined) return; // notification
 
   try {
     if (method === "initialize") {
@@ -46,7 +53,7 @@ async function handle(line) {
     }
 
     if (method === "tools/list") {
-      const { tools } = await client.listTools();
+      const tools = await backend.listTools();
       return reply(id, {
         tools: tools.map((t) => ({
           name: t.name,
@@ -57,11 +64,8 @@ async function handle(line) {
     }
 
     if (method === "tools/call") {
-      const result = await client.callTool(params?.name, params?.arguments ?? {});
-      return reply(id, {
-        content: result?.content ?? [],
-        isError: Boolean(result?.isError),
-      });
+      const result = await backend.callTool(params?.name, params?.arguments ?? {});
+      return reply(id, { content: result?.content ?? [], isError: Boolean(result?.isError) });
     }
 
     if (method === "ping") return reply(id, {});
@@ -72,11 +76,39 @@ async function handle(line) {
   }
 }
 
-process.on("SIGINT", () => {
-  client.stop();
-  process.exit(0);
-});
-process.on("SIGTERM", () => {
-  client.stop();
-  process.exit(0);
-});
+// --- backends ---------------------------------------------------------------
+
+function localBackend() {
+  const client = new AppServerClient();
+  const stop = () => client.stop();
+  process.on("SIGINT", () => (stop(), process.exit(0)));
+  process.on("SIGTERM", () => (stop(), process.exit(0)));
+  return {
+    async listTools() {
+      return (await client.listTools()).tools;
+    },
+    callTool: (name, args) => client.callTool(name, args),
+  };
+}
+
+function remoteBackend(baseUrl, token) {
+  const url = baseUrl.replace(/\/$/, "");
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  return {
+    async listTools() {
+      const res = await fetch(`${url}/computer-use/tools`, { headers });
+      if (!res.ok) throw new Error(`bridge ${res.status}: ${await res.text()}`);
+      return (await res.json()).tools ?? [];
+    },
+    async callTool(name, args) {
+      const res = await fetch(`${url}/computer-use/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name, arguments: args, raw: true }),
+      });
+      if (!res.ok) throw new Error(`bridge ${res.status}: ${await res.text()}`);
+      return res.json();
+    },
+  };
+}

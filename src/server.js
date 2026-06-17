@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
+import { timingSafeEqual } from "node:crypto";
 import { mkdirSync, createReadStream, existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join, basename, dirname } from "node:path";
@@ -11,6 +12,9 @@ const execFileAsync = promisify(execFile);
 
 const HOST = process.env.BRIDGE_HOST ?? "127.0.0.1";
 const PORT = Number(process.env.BRIDGE_PORT ?? "37321");
+// Shared secret for network access. When set, every endpoint except /health
+// requires `Authorization: Bearer <token>`. Leave unset only for localhost use.
+const TOKEN = process.env.BRIDGE_TOKEN ?? "";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const DATA_DIR = process.env.BRIDGE_DATA_DIR ?? join(ROOT, "data");
@@ -43,6 +47,11 @@ const server = createServer(async (req, res) => {
   );
 
   try {
+    // /health stays open for liveness checks; everything else needs the token.
+    if (url.pathname !== "/health" && !authorized(req)) {
+      return sendJson(res, 401, { error: "unauthorized" });
+    }
+
     if (req.method === "GET" && url.pathname === "/") {
       return sendJson(res, 200, { name: "codex-computer-use-bridge", routes });
     }
@@ -74,6 +83,10 @@ const server = createServer(async (req, res) => {
       const body = await readJson(req);
       requireString(body.name, "name");
       const raw = await computerUse.callTool(body.name, body.arguments ?? {});
+      // `raw:true` returns the unformatted MCP result (used by the MCP proxy).
+      if (body.raw) {
+        return sendJson(res, 200, { content: raw?.content ?? [], isError: Boolean(raw?.isError) });
+      }
       return sendJson(res, 200, await formatResult(body.name, raw, url));
     }
 
@@ -114,8 +127,23 @@ const server = createServer(async (req, res) => {
 
 server.listen(PORT, HOST, () => {
   console.log(`codex-computer-use-bridge listening on http://${HOST}:${PORT}`);
+  console.log(`auth: ${TOKEN ? "bearer token required" : "OPEN (localhost only — set BRIDGE_TOKEN before exposing)"}`);
   console.log(`screenshots -> ${SHOTS_DIR}`);
+  if (!TOKEN && HOST !== "127.0.0.1" && HOST !== "localhost") {
+    console.warn("WARNING: bound to a non-loopback host with no BRIDGE_TOKEN — anyone on the network can control this desktop.");
+  }
 });
+
+// Constant-time bearer-token check. No token configured => allow (localhost mode).
+function authorized(req) {
+  if (!TOKEN) return true;
+  const header = req.headers["authorization"] ?? "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) return false;
+  const given = Buffer.from(match[1]);
+  const want = Buffer.from(TOKEN);
+  return given.length === want.length && timingSafeEqual(given, want);
+}
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
