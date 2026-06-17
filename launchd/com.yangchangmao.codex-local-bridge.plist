@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.yangchangmao.codex-local-bridge</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/env</string>
+    <string>node</string>
+    <string>/Users/yangchangmao/Documents/AppleScript/src/server.js</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/yangchangmao/Documents/AppleScript</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/codex-local-bridge.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/codex-local-bridge.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BRIDGE_HOST</key>
+    <string>127.0.0.1</string>
+    <key>BRIDGE_PORT</key>
+    <string>37321</string>
+  </dict>
+</dict>
+</plist>
