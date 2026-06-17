@@ -1,13 +1,28 @@
 {
-  "name": "codex-local-bridge",
-  "version": "0.1.0",
+  "name": "codex-computer-use-bridge",
+  "version": "0.2.0",
   "private": true,
+  "description": "Local HTTP + MCP bridge to Codex Computer Use on macOS, via codex app-server.",
   "type": "module",
+  "bin": {
+    "codex-cu-bridge": "src/server.js",
+    "codex-cu-mcp": "src/mcp-server.js"
+  },
   "scripts": {
     "start": "node src/server.js",
-    "list-apps:mcp": "node scripts/list-apps-mcp-once.js",
+    "mcp": "node src/mcp-server.js",
     "smoke": "node scripts/smoke.js"
   },
+  "keywords": [
+    "codex",
+    "computer-use",
+    "desktop-control",
+    "macos",
+    "automation",
+    "accessibility",
+    "mcp"
+  ],
+  "license": "MIT",
   "engines": {
     "node": ">=20"
   }

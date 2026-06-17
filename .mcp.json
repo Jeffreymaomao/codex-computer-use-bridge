@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "computer-use-bridge": {
+      "command": "node",
+      "args": ["./src/mcp-server.js"],
+      "cwd": "."
+    }
+  }
+}

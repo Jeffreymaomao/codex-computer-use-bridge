@@ -4,17 +4,18 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.yangchangmao.codex-local-bridge</string>
+  <string>com.codex-computer-use-bridge</string>
 
+  <!-- Edit the path below to where you cloned this repo. -->
   <key>ProgramArguments</key>
   <array>
     <string>/usr/bin/env</string>
     <string>node</string>
-    <string>/Users/yangchangmao/Documents/AppleScript/src/server.js</string>
+    <string>/REPLACE/WITH/ABS/PATH/codex-computer-use-bridge/src/server.js</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/yangchangmao/Documents/AppleScript</string>
+  <string>/REPLACE/WITH/ABS/PATH/codex-computer-use-bridge</string>
 
   <key>RunAtLoad</key>
   <true/>
@@ -23,10 +24,10 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/tmp/codex-local-bridge.out.log</string>
+  <string>/tmp/codex-computer-use-bridge.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/tmp/codex-local-bridge.err.log</string>
+  <string>/tmp/codex-computer-use-bridge.err.log</string>
 
   <key>EnvironmentVariables</key>
   <dict>

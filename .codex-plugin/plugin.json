@@ -1,0 +1,22 @@
+{
+  "name": "computer-use-bridge",
+  "version": "0.2.0",
+  "description": "Control desktop apps on macOS through Codex Computer Use, exposed over HTTP and MCP.",
+  "license": "MIT",
+  "keywords": [
+    "computer-use",
+    "desktop-control",
+    "macos",
+    "automation",
+    "accessibility",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Computer Use Bridge",
+    "shortDescription": "Control Mac apps via Codex Computer Use",
+    "longDescription": "A thin local bridge that reaches Codex Computer Use the supported way (codex app-server -> mcpServer/tool/call), exposing list_apps / get_app_state / click / type_text / scroll / drag / press_key / set_value over both an HTTP API and a stdio MCP server. Tool execution requires the launching process to hold macOS Accessibility, Input Monitoring, Screen Recording, and Automation permissions.",
+    "category": "Productivity"
+  }
+}
