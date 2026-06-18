@@ -2,13 +2,31 @@ import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
+import { delimiter, join } from "node:path";
 
-// Resolve the codex binary that exposes `app-server`. Prefer the standalone
-// install managed by the Codex installer; fall back to the bundled GUI copy.
+// Resolve the codex binary that exposes `app-server` on THIS machine, so the
+// bridge works on anyone's install without hardcoding a path. Order:
+//   1. CODEX_BIN override.
+//   2. The standalone install managed by the Codex installer.
+//   3. `codex` found anywhere on PATH (npm -g, Homebrew, ~/.local/bin, …).
+//   4. Common bin locations and the bundled GUI copy.
+// Returns the first that exists; if none do, returns the standalone path so the
+// spawn failure points at the expected location. (The user must have Codex
+// installed — this only locates it, it can't fetch it.)
 function resolveCodexBin() {
   if (process.env.CODEX_BIN) return process.env.CODEX_BIN;
+
+  const onPath = (process.env.PATH ?? "")
+    .split(delimiter)
+    .filter(Boolean)
+    .map((dir) => join(dir, "codex"));
+
   const candidates = [
     `${homedir()}/.codex/packages/standalone/current/codex`,
+    ...onPath,
+    "/opt/homebrew/bin/codex",
+    "/usr/local/bin/codex",
+    `${homedir()}/.local/bin/codex`,
     "/Applications/Codex.app/Contents/Resources/codex",
   ];
   return candidates.find((p) => existsSync(p)) ?? candidates[0];

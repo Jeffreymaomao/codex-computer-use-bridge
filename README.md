@@ -11,7 +11,8 @@ MCP client ──stdio─┘
 ```
 
 Tools: `list_apps`, `get_app_state`, `click`, `type_text`, `press_key`, `scroll`, `drag`,
-`set_value`, `select_text`, `perform_secondary_action`.
+`set_value`, `select_text`, `perform_secondary_action`. For text entry prefer `set_value` over
+`type_text` — see [Usage tips](#usage-tips).
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works and why a bare
 `SkyComputerUseClient mcp` can't do this on its own.
@@ -23,7 +24,10 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works and why a bare
   ```bash
   curl -fsSL https://chatgpt.com/codex/install.sh | sh
   ```
-  Falls back to `/Applications/Codex.app/Contents/Resources/codex`; override with `CODEX_BIN`.
+  Auto-detected: the bridge also picks up `codex` from your `PATH`, common bin dirs
+  (`/opt/homebrew/bin`, `/usr/local/bin`, `~/.local/bin`), and the bundled GUI copy at
+  `/Applications/Codex.app/Contents/Resources/codex`. Override with `CODEX_BIN`. You must have
+  Codex installed — the bridge locates it but can't fetch it.
 - **macOS permissions on the launching process** — see [Permissions](#permissions). Without
   them, tool calls hang.
 
@@ -64,9 +68,37 @@ Tool calls return clean output — text in `text`, and any screenshot saved to
 
 ### MCP server
 
-For MCP clients (Claude Code, Codex, …) point them at the stdio entry point:
+The stdio entry point is `src/mcp-server.js`. In **LOCAL mode** (default) it spawns
+`codex app-server` on the machine the client runs on — so installing it below drives *that*
+machine's desktop. To instead control a remote host that's running the bridge, set `BRIDGE_URL`
+and `BRIDGE_TOKEN` (see [Team / LAN sharing](#team--lan-sharing)). Use an **absolute path** to
+`src/mcp-server.js` in every example below.
 
-```jsonc
+> **macOS permissions (local mode):** tool execution needs Accessibility, Screen Recording, Input
+> Monitoring, and Automation granted to whatever launches the MCP — your terminal for Claude Code /
+> opencode, or Claude Desktop itself. Without them, calls hang. See [Permissions](#permissions).
+
+#### Claude Code
+
+```bash
+# user scope → available in every project
+claude mcp add computer-use-bridge --scope user -- \
+  node /abs/path/codex-computer-use-bridge/src/mcp-server.js
+
+# remote mode (drive a host's desktop): add env with -e
+claude mcp add computer-use-bridge --scope user \
+  -e BRIDGE_URL=http://100.x.y.z:37321 -e BRIDGE_TOKEN=the-shared-secret -- \
+  node /abs/path/codex-computer-use-bridge/src/mcp-server.js
+```
+
+Verify with `claude mcp list` or `/mcp` inside Claude Code. (This repo also ships a project-scoped
+`.mcp.json`, so launching `claude` from the repo root offers the server automatically.)
+
+#### Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json`, then restart the app:
+
+```json
 {
   "mcpServers": {
     "computer-use-bridge": {
@@ -76,6 +108,36 @@ For MCP clients (Claude Code, Codex, …) point them at the stdio entry point:
   }
 }
 ```
+
+For remote mode, add `"env": { "BRIDGE_URL": "http://100.x.y.z:37321", "BRIDGE_TOKEN": "..." }`.
+
+#### opencode
+
+Add to `opencode.json` (project) or `~/.config/opencode/opencode.json` (global):
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "computer-use-bridge": {
+      "type": "local",
+      "command": ["node", "/abs/path/codex-computer-use-bridge/src/mcp-server.js"],
+      "enabled": true
+    }
+  }
+}
+```
+
+For remote mode, keep `"type": "local"` and add
+`"environment": { "BRIDGE_URL": "http://100.x.y.z:37321", "BRIDGE_TOKEN": "..." }` — the proxy
+forwards to the host bridge. (Don't point opencode's `"type": "remote"` at the bridge's HTTP port:
+`/computer-use/*` is a plain JSON API, not the MCP-over-HTTP transport opencode expects.)
+
+#### Any other MCP client
+
+Register a **stdio** server whose command is
+`node /abs/path/codex-computer-use-bridge/src/mcp-server.js` (optionally with `BRIDGE_URL` /
+`BRIDGE_TOKEN` in its environment for remote mode).
 
 ### Environment
 
@@ -95,6 +157,12 @@ For MCP clients (Claude Code, Codex, …) point them at the stdio entry point:
 - **Prefer `element_index` over pixels.** `click` takes either `element_index` (from the
   accessibility tree — precise) or `x`/`y` (screenshot pixels, a fallback for elements the tree
   doesn't expose).
+- **For text entry, prefer `set_value` over `type_text`.** `type_text` synthesizes keystrokes and
+  can return success without inserting anything. For a `(settable, string)` element, write the
+  value directly with `set_value`, then `press_key Return` to submit.
+- **Element indices renumber on every `get_app_state`.** Use indices from the latest read only;
+  inside `/sequence` they come from the `get_app_state` that runs first. A stale index fails with
+  `cannotClickOffscreenElement`.
 - `/computer-use/sequence` runs `get_app_state(app)` once and then your steps in one request.
 
 ```bash
@@ -102,7 +170,7 @@ curl -sX POST localhost:37321/computer-use/sequence \
   -H 'content-type: application/json' \
   -d '{"app":"Notes","steps":[
         {"tool":"click","arguments":{"app":"Notes","element_index":"5"}},
-        {"tool":"type_text","arguments":{"app":"Notes","text":"Hello"}},
+        {"tool":"set_value","arguments":{"app":"Notes","element_index":"6","value":"Hello"}},
         {"tool":"press_key","arguments":{"app":"Notes","key":"Return"}}
       ]}'
 ```

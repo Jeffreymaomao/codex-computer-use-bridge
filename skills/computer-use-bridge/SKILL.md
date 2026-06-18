@@ -18,6 +18,13 @@ desktop, follow the confirmation policy below before risky actions.
 `list_apps`, `get_app_state(app)`, `click`, `type_text`, `press_key`, `scroll`, `drag`,
 `set_value`, `select_text`, `perform_secondary_action`.
 
+**Entering text — prefer `set_value` over `type_text`.** `type_text` synthesizes keystrokes and
+is unreliable: it can return `ok: true` / `isError: false` while nothing actually lands in the
+field (the keystrokes don't reach the focused element). For any settable element (the tree marks
+it `(settable, string)`), use `set_value(element_index, value)` to write the value directly, then
+`press_key(Return)` to submit. Reserve `type_text` for targets with no settable value, and always
+verify the result against the returned tree/screenshot.
+
 ## How to drive it (the efficient loop)
 
 1. **`get_app_state(app)` once** to open the session and see the screen. It returns an indexed
@@ -30,7 +37,13 @@ desktop, follow the confirmation policy below before risky actions.
    accessibility tree — precise, no guessing) or `x`/`y` (screenshot pixels). Use pixel
    coordinates only when the target is not in the tree (canvas, custom-drawn UI, rows that
    expose no value).
-4. To find an item in a long list, type into the app's search field and click the filtered
+4. **Indices are not stable — they renumber on every `get_app_state`.** Only use an
+   `element_index` taken from the *most recent* state. In `/sequence`, `get_app_state` re-runs
+   before your steps, so the indices in your steps must come from that same sequence's read, not
+   from an earlier response — a stale index typically fails with `cannotClickOffscreenElement`.
+   The tree also does not expose row labels (chat names, list-item text show only as `row` /
+   `文字`), so confirm identity from the screenshot before acting on a specific row.
+5. To find an item in a long list, type into the app's search field and click the filtered
    result by `element_index`, rather than scanning pixels.
 
 ### HTTP
@@ -41,12 +54,14 @@ curl -sX POST localhost:37321/computer-use/call \
   -H 'content-type: application/json' \
   -d '{"name":"get_app_state","arguments":{"app":"Notes"}}'
 
-# a whole flow in one request: get_app_state(app) runs once, then the steps
+# a whole flow in one request: get_app_state(app) runs once, then the steps.
+# element_index values below come from that initial get_app_state (same sequence).
+# Prefer set_value for text entry; type_text often reports success without inserting.
 curl -sX POST localhost:37321/computer-use/sequence \
   -H 'content-type: application/json' \
   -d '{"app":"Notes","steps":[
         {"tool":"click","arguments":{"app":"Notes","element_index":"5"}},
-        {"tool":"type_text","arguments":{"app":"Notes","text":"Hello"}},
+        {"tool":"set_value","arguments":{"app":"Notes","element_index":"6","value":"Hello"}},
         {"tool":"press_key","arguments":{"app":"Notes","key":"Return"}}
       ]}'
 ```
